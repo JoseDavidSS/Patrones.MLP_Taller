@@ -6,6 +6,7 @@ from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 from sklearn.datasets import fetch_openml
 from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
 
 from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import LabelEncoder
@@ -57,10 +58,6 @@ class PerceptronMulticapa:
     def feedforward(self, X):
         self.activaciones = [X]
         for i in range(self.num_capas - 1):
-            print ("Voy a calcular la salida de la capa actual*******")
-            print ("Capa actual_____________________________________:", self.capas[i])
-            print ("Estoy usando la función_________________________:", self.funciones_activacion[i])
-            
 
             # Calcular la salida de la capa actual
             if self.funciones_activacion[i] == "r": # Para ReLU
@@ -72,9 +69,6 @@ class PerceptronMulticapa:
             else: # Para sigmoide
                 activacion = self.activacion(np.dot(self.activaciones[i], self.pesos[i]) + self.bias[i])
 
-            print ("Terminé de calcular la salida de la capa actual**")
-
-            
             self.activaciones.append(activacion)
         return self.activaciones[-1]
 
@@ -144,10 +138,9 @@ class PerceptronMulticapa:
         print ("Tiempo de entrenamiento______: ", tiempo_entrenamiento)
 
 def myMLP (capas_ocultas, funciones_activacion, alpha, epochs):
-    capas = [784] + capas_ocultas + [10]
+    capas = capas_ocultas
     funciones_activacion = ["s"] + funciones_activacion + ["s"]
     perceptron = PerceptronMulticapa(capas, funciones_activacion, alpha, epochs)
-    num_capas = perceptron.num_capas
     return perceptron
 
 # Cargar y preparar los datos de MNIST
@@ -155,27 +148,41 @@ mnist = fetch_openml('mnist_784', version=1, cache=True)
 X = mnist.data.astype('float32')
 y = mnist.target.astype('int32')
 X /= 255.0
+
+# Reducción de dimensionalidad utilizando PCA
+pca = PCA(n_components=0.9)  # Mantener el 95% de la varianza explicada
+X_reduced = pca.fit_transform(X)
+
+# División en conjuntos de entrenamiento y prueba
 print("Etiquetas únicas:", np.unique(y))
-X_entrenamiento, X_prueba, y_entrenamiento, y_prueba = train_test_split(X, y, test_size=0.2, random_state=42)
+X_entrenamiento, X_prueba, y_entrenamiento, y_prueba = train_test_split(X_reduced, y, test_size=0.2, random_state=42, stratify=y)
 
 # Crear y entrenar el perceptrón multicapa
-
 capas_ocultas = [8, 10, 61, 30]
 funciones_activacion = ["s", "r", "t", "s"]
 alpha = 0.1
 epochs = 2
-perceptron = myMLP(capas_ocultas, funciones_activacion, alpha, epochs)
+entrada_dim = len(X_entrenamiento[0])
+print ("La dimensión de la entrada es de_____: ", entrada_dim)
+salida_dim = 10
+capas_totales = [entrada_dim] + capas_ocultas + [salida_dim]
 
-# Crear y entrenar el perceptrón multicapa
-entrada_dim = X_entrenamiento.shape[1]
-#perceptron = PerceptronMulticapa(capas=[entrada_dim, 10, 10], alpha=0.1, epochs=5)
-
-X_entrenamiento = X_entrenamiento.to_numpy()
-
+perceptron = myMLP(capas_totales, funciones_activacion, alpha, epochs)
 perceptron.fit(X_entrenamiento, np.eye(10)[y_entrenamiento])
 
+
+# Verificar el tamaño de X_prueba
+if len(X_prueba) % 784 != 0:
+    # Calcular el tamaño necesario para ser divisible por 784
+    nuevo_tamano = len(X_prueba) + (784 - (len(X_prueba) % 784))
+    
+    # Ajustar el tamaño de X_prueba agregando elementos adicionales
+    X_prueba = np.concatenate((X_prueba, X_prueba[:nuevo_tamano - len(X_prueba)]))
+X_prueba_reduced = pca.transform(X_prueba.reshape(-1, 784))
+
 # Hacer predicciones sobre el conjunto de prueba
-predicciones = perceptron.predict(X_prueba)
+predicciones = perceptron.predict(X_prueba_reduced)
 
 # Imprimir métricas
+y_prueba = y_prueba.head(len(predicciones))
 perceptron.imprimir_metricas(y_prueba, predicciones)
